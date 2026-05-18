@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 from typing import Any
 
@@ -19,12 +21,15 @@ class HermesClient:
         self.timeout_seconds = timeout_seconds
 
     async def deliver(self, payload: dict[str, Any]) -> None:
+        body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
         headers = {"content-type": "application/json"}
         if self.token:
-            headers["authorization"] = f"Bearer {self.token}"
+            headers["x-webhook-signature"] = hmac.new(
+                self.token.encode(), body, hashlib.sha256
+            ).hexdigest()
 
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
-            response = await client.post(self.webhook_url, headers=headers, json=payload)
+            response = await client.post(self.webhook_url, headers=headers, content=body)
 
         if response.status_code >= 300:
             raise HermesDeliveryError(f"Hermes returned HTTP {response.status_code}: {response.text[:500]}")
