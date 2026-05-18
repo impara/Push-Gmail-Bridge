@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, Response
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request, Response
+from pydantic import BaseModel, Field
 
 from .auth import verify_pubsub_auth
 from .config import Settings, get_settings
@@ -13,6 +14,13 @@ from .pubsub import PubSubPayloadError, parse_pubsub_push
 from .state import StateStore
 
 logger = logging.getLogger(__name__)
+
+
+class ReplyRequest(BaseModel):
+    original_message_id: str = Field(min_length=1)
+    text: str = Field(min_length=1)
+    html: str = ""
+    to: list[str] | None = None
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -48,6 +56,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         background_tasks.add_task(_process_safely, request.app.state.processor, notification)
         return Response(status_code=204)
 
+    @app.post("/outbound/reply")
+    async def send_reply(
+        reply: ReplyRequest,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ) -> dict[str, str]:
+        settings = request.app.state.settings
+        if not settings.hermes_outbound_token:
+            raise HTTPException(status_code=503, detail="Outbound token is not configured")
+
+        expected = f"Bearer {settings.hermes_outbound_token}"
+        if authorization != expected:
+            raise HTTPException(status_code=401, detail="Invalid outbound token")
+
+        sent = request.app.state.gmail.send_reply(
+            original_message_id=reply.original_message_id,
+            from_addr=settings.public_inbox_address,
+            text=reply.text,
+            html=reply.html,
+            to_addrs=reply.to,
+        )
+        return {
+            "status": "sent",
+            "message_id": str(sent.get("id", "")),
+            "thread_id": str(sent.get("threadId", "")),
+        }
+
     return app
 
 
@@ -59,4 +94,3 @@ async def _process_safely(processor: NotificationProcessor, notification) -> Non
 
 
 app = create_app()
-

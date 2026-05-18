@@ -22,6 +22,14 @@ POST /webhooks/contact-inbox
 
 It deliberately does not classify, route, or decide what the agent should do. Hermès owns that.
 
+The bridge also exposes a small authenticated local outbound helper:
+
+```text
+POST /outbound/reply
+```
+
+Hermès can call this after approval to send a Gmail API reply in the original thread.
+
 ## Setup
 
 ```bash
@@ -154,4 +162,38 @@ Failed Hermès deliveries are stored in SQLite and can be retried:
 
 ```bash
 python scripts/retry_failed_deliveries.py
+```
+
+## Outbound Replies
+
+Configure a local-only secret:
+
+```env
+HERMES_OUTBOUND_TOKEN=use-a-long-random-secret
+```
+
+Hermès can then call the bridge:
+
+```bash
+curl -X POST http://127.0.0.1:8090/outbound/reply \
+  -H "Authorization: Bearer use-a-long-random-secret" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "original_message_id": "gmail-message-id",
+    "text": "Hello,\n\nThanks for reaching out.\n\nBest,"
+  }'
+```
+
+The bridge fetches the original Gmail message, preserves `threadId`, `In-Reply-To`, and `References`, and sends from `PUBLIC_INBOX_ADDRESS`. That address must already be configured as a Gmail send-as alias.
+
+The OAuth token must include:
+
+```text
+https://www.googleapis.com/auth/gmail.send
+```
+
+If you added this scope after authorizing, delete `secrets/google-token.json` and run:
+
+```bash
+python scripts/setup_gmail_oauth.py
 ```

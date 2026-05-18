@@ -56,9 +56,10 @@ Required scopes:
 ```text
 https://www.googleapis.com/auth/gmail.readonly
 https://www.googleapis.com/auth/gmail.modify
+https://www.googleapis.com/auth/gmail.send
 ```
 
-The bridge uses `gmail.modify` because Gmail watch/history integrations commonly require mailbox metadata access, and future marking/labeling can use the same token.
+The bridge uses `gmail.modify` because Gmail watch/history integrations commonly require mailbox metadata access. It uses `gmail.send` only for the optional approved-reply endpoint that lets Hermès send a reply after approval.
 
 ## 4. Create OAuth Client
 
@@ -109,6 +110,8 @@ secrets/google-token.json
 ```
 
 Keep both files private. Do not commit them.
+
+If you add or change scopes later, delete `secrets/google-token.json` and run the OAuth setup script again.
 
 ## 6. Create Pub/Sub Topic
 
@@ -318,6 +321,7 @@ GOOGLE_TOKEN_FILE=secrets/google-token.json
 GOOGLE_PUBSUB_TOPIC=projects/YOUR_PROJECT_ID/topics/hermes-contact-inbox
 GMAIL_LABEL_IDS=INBOX
 HERMES_WEBHOOK_URL=http://localhost:YOUR_HERMES_PORT/webhooks/contact-inbox
+HERMES_OUTBOUND_TOKEN=YOUR_LONG_RANDOM_LOCAL_SECRET
 PUBSUB_BEARER_TOKEN=
 PUBSUB_AUDIENCE=
 ```

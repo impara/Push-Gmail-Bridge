@@ -22,6 +22,7 @@ class Settings(BaseSettings):
 
     hermes_webhook_url: AnyHttpUrl = Field(default="http://localhost:8080/webhooks/contact-inbox")
     hermes_webhook_token: str = Field(default="")
+    hermes_outbound_token: str = Field(default="")
     hermes_timeout_seconds: float = Field(default=10.0)
 
     pubsub_audience: str = Field(default="")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from email.message import EmailMessage as MimeMessage
 from email.utils import getaddresses
 from pathlib import Path
 from typing import Any, Iterable
@@ -17,6 +18,7 @@ from .models import EmailMessage, normalize_email_date
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/gmail.modify",
+    "https://www.googleapis.com/auth/gmail.send",
 ]
 
 
@@ -131,6 +133,48 @@ class GmailClient:
             raw=raw,
         )
 
+    def send_reply(
+        self,
+        original_message_id: str,
+        from_addr: str,
+        text: str,
+        html: str = "",
+        to_addrs: list[str] | None = None,
+    ) -> dict[str, Any]:
+        original = self.get_message(original_message_id)
+        recipients = to_addrs or _parse_addresses(original.from_addr)
+        if not recipients:
+            raise ValueError("Reply has no recipients")
+
+        subject = original.subject
+        if subject and not subject.lower().startswith("re:"):
+            subject = f"Re: {subject}"
+        elif not subject:
+            subject = "Re:"
+
+        mime = MimeMessage()
+        mime["From"] = from_addr
+        mime["To"] = ", ".join(recipients)
+        mime["Subject"] = subject
+
+        original_rfc822_id = original.headers.get("message-id", "")
+        references = original.headers.get("references", "")
+        if original_rfc822_id:
+            mime["In-Reply-To"] = original_rfc822_id
+            mime["References"] = f"{references} {original_rfc822_id}".strip()
+
+        if html:
+            mime.set_content(text or "")
+            mime.add_alternative(html, subtype="html")
+        else:
+            mime.set_content(text)
+
+        raw = base64.urlsafe_b64encode(mime.as_bytes()).decode("ascii")
+        return self.service.users().messages().send(
+            userId="me",
+            body={"raw": raw, "threadId": original.thread_id},
+        ).execute()
+
 
 def _headers_by_lower_name(headers: Iterable[dict[str, str]]) -> dict[str, str]:
     normalized: dict[str, str] = {}
@@ -182,4 +226,3 @@ def _unique(values: Iterable[str]) -> list[str]:
             seen.add(value)
             result.append(value)
     return result
-
