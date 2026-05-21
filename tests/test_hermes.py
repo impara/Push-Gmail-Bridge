@@ -22,6 +22,7 @@ def test_build_contact_inbox_payload_is_clean_json_contract():
     assert payload["source"] == "gmail"
     assert payload["inbox"] == "contact@example.com"
     assert payload["message_id"] == "gmail-1"
+    assert payload["approval_label"].startswith("A-")
     assert payload["rfc822_message_id"] == "<abc@example.com>"
     assert payload["headers"]["in_reply_to"] == "<prev@example.com>"
     assert payload["raw"]["label_ids"] == ["INBOX"]

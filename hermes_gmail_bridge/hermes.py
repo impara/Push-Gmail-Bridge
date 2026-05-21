@@ -7,6 +7,7 @@ from typing import Any
 
 import httpx
 
+from .approval_labels import build_approval_label
 from .models import EmailMessage
 
 
@@ -45,6 +46,7 @@ def build_contact_inbox_payload(
         "inbox": public_inbox_address,
         "gmail_account": gmail_account,
         "message_id": message.gmail_id,
+        "approval_label": build_approval_label(message.gmail_id),
         "rfc822_message_id": message.header_message_id,
         "thread_id": message.thread_id,
         "history_id": message.history_id,

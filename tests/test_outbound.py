@@ -4,6 +4,7 @@ from email import message_from_bytes
 from fastapi.testclient import TestClient
 
 from hermes_gmail_bridge.app import create_app
+from hermes_gmail_bridge.approval_labels import build_approval_label
 from hermes_gmail_bridge.config import Settings
 from hermes_gmail_bridge.gmail_client import GmailClient
 from hermes_gmail_bridge.models import EmailMessage
@@ -46,6 +47,8 @@ class FakeGmailClient(GmailClient):
         return self.fake_service
 
     def get_message(self, message_id):
+        if message_id != "m1":
+            raise AssertionError(f"expected resolved Gmail id m1, got {message_id}")
         return EmailMessage(
             gmail_id=message_id,
             thread_id="thread-1",
@@ -58,11 +61,15 @@ class FakeGmailClient(GmailClient):
             headers={"message-id": "<original@example.com>", "references": "<prev@example.com>"},
         )
 
+    def list_recent_message_ids(self, query, max_results=20):
+        return ["older", "m1", "newer"]
+
 
 def test_outbound_reply_requires_token(tmp_path):
     settings = Settings(
         sqlite_path=tmp_path / "bridge.sqlite3",
         hermes_webhook_url="http://hermes.test/webhooks/contact-inbox",
+        hermes_outbound_token="",
     )
     client = TestClient(create_app(settings))
 
@@ -102,3 +109,25 @@ def test_outbound_reply_sends_threaded_mime(tmp_path):
     assert mime["In-Reply-To"] == "<original@example.com>"
     assert mime["References"] == "<prev@example.com> <original@example.com>"
 
+
+
+def test_outbound_reply_accepts_deterministic_approval_label(tmp_path):
+    settings = Settings(
+        sqlite_path=tmp_path / "bridge.sqlite3",
+        public_inbox_address="contact@example.com",
+        hermes_webhook_url="http://hermes.test/webhooks/contact-inbox",
+        hermes_outbound_token="secret",
+    )
+    app = create_app(settings)
+    fake_gmail = FakeGmailClient()
+    app.state.gmail = fake_gmail
+    client = TestClient(app)
+
+    response = client.post(
+        "/outbound/reply",
+        headers={"Authorization": "Bearer secret"},
+        json={"original_message_id": build_approval_label("m1"), "text": "Approved reply"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "sent", "message_id": "sent-1", "thread_id": "thread-1"}

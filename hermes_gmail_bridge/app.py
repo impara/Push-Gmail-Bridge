@@ -6,6 +6,7 @@ from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Re
 from pydantic import BaseModel, Field
 
 from .auth import verify_pubsub_auth
+from .approval_labels import find_message_id_for_approval_label, is_approval_label
 from .config import Settings, get_settings
 from .gmail_client import GmailClient
 from .hermes import HermesClient
@@ -70,8 +71,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if authorization != expected:
             raise HTTPException(status_code=401, detail="Invalid outbound token")
 
+        original_message_id = reply.original_message_id.strip()
+        if is_approval_label(original_message_id):
+            resolved_message_id = find_message_id_for_approval_label(
+                request.app.state.gmail,
+                original_message_id,
+                query=settings.recovery_query,
+            )
+            if not resolved_message_id:
+                raise HTTPException(status_code=404, detail="Approval label not found in recent Gmail messages")
+            original_message_id = resolved_message_id
+
         sent = request.app.state.gmail.send_reply(
-            original_message_id=reply.original_message_id,
+            original_message_id=original_message_id,
             from_addr=settings.public_inbox_address,
             text=reply.text,
             html=reply.html,
