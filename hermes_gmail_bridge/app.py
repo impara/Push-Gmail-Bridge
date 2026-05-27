@@ -23,6 +23,12 @@ class ReplyRequest(BaseModel):
     html: str = ""
     to: list[str] | None = None
 
+class SendRequest(BaseModel):
+    to: list[str] = Field(min_length=1)
+    subject: str = Field(min_length=1)
+    text: str = Field(min_length=1)
+    html: str = ''
+
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
@@ -93,6 +99,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "status": "sent",
             "message_id": str(sent.get("id", "")),
             "thread_id": str(sent.get("threadId", "")),
+        }
+
+    @app.post('/outbound/send')
+    async def send_message(
+        send: SendRequest,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ) -> dict[str, str]:
+        settings = request.app.state.settings
+        if not settings.hermes_outbound_token:
+            raise HTTPException(status_code=503, detail='Outbound token is not configured')
+
+        expected = f'Bearer {settings.hermes_outbound_token}'
+        if authorization != expected:
+            raise HTTPException(status_code=401, detail='Invalid outbound token')
+
+        sent = request.app.state.gmail.send_message(
+            from_addr=settings.public_inbox_address,
+            to_addrs=send.to,
+            subject=send.subject,
+            text=send.text,
+            html=send.html,
+        )
+        return {
+            'status': 'sent',
+            'message_id': str(sent.get('id', '')),
+            'thread_id': str(sent.get('threadId', '')),
         }
 
     return app

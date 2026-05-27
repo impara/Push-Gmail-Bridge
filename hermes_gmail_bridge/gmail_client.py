@@ -176,6 +176,31 @@ class GmailClient:
         ).execute()
 
 
+    def send_message(
+        self,
+        from_addr: str,
+        to_addrs: list[str],
+        subject: str,
+        text: str,
+        html: str = '',
+    ) -> dict[str, Any]:
+        mime = MimeMessage()
+        mime['From'] = from_addr
+        mime['To'] = ', '.join(to_addrs)
+        mime['Subject'] = subject
+
+        if html:
+            mime.set_content(text or '')
+            mime.add_alternative(html, subtype='html')
+        else:
+            mime.set_content(text)
+
+        raw = base64.urlsafe_b64encode(mime.as_bytes()).decode('ascii')
+        return self.service.users().messages().send(
+            userId='me',
+            body={'raw': raw},
+        ).execute()
+
 def _headers_by_lower_name(headers: Iterable[dict[str, str]]) -> dict[str, str]:
     normalized: dict[str, str] = {}
     for header in headers:
